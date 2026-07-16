@@ -52,7 +52,7 @@ For this MVP:
 * No tax calculations.
 * No depreciation.
 * No accruals.
-* No inventory valuation.
+* No inventory valuation: no automatic costing method (FIFO, weighted average, etc.) tracks what each unit of inventory cost. When inventory is sold, the cost of goods sold is whatever the user states in the moment — the application does not compute or look it up.
 * No fixed assets.
 * No budgeting.
 * No multi-currency.
@@ -93,6 +93,7 @@ The application starts with the following accounts, all enabled by default.
 * 5000 Salary Expense
 * 5100 Rent Expense
 * 5200 Utilities Expense
+* 5300 Cost of Goods Sold
 
 ### Account selection
 
@@ -201,8 +202,9 @@ The TransactionInterpreterAgent acts as a bookkeeping assistant that turns a pla
 For every chat message it must:
 
 * Decide whether it has enough information to propose a correct double-entry treatment.
-* If not, ask exactly one short, specific clarifying question (for example, whether a purchase was paid in cash or on credit) and propose nothing yet.
-* If so, propose a balanced entry using only accounts from the supplied Chart of Accounts, with a brief explanation of the accounting treatment.
+* If not, ask exactly one short, specific clarifying question (for example, whether a purchase was paid in cash or on credit, or what a sold item cost) and propose nothing yet.
+* If so, propose a balanced entry using only accounts from the supplied Chart of Accounts, with a brief explanation of the accounting treatment. A single entry may have more than one debit or credit line when a transaction has more than one accounting effect.
+* Recognize that selling inventory has two effects, not one: the sale itself (debit Cash/Bank/Accounts Receivable, credit Sales Revenue, for the sale price) and the cost of goods sold (debit Cost of Goods Sold, credit Inventory, for what the goods originally cost) — both in the same compound entry. If the user hasn't stated what the sold goods cost, ask for it before proposing the entry.
 * Use today's date for the entry unless the user states a different date.
 * Never invent an account that isn't in the supplied Chart of Accounts.
 

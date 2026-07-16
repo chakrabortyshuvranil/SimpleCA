@@ -39,6 +39,7 @@ CHART_OF_ACCOUNTS: list[tuple[str, str, str]] = [
     ("5000", "Salary Expense", "expense"),
     ("5100", "Rent Expense", "expense"),
     ("5200", "Utilities Expense", "expense"),
+    ("5300", "Cost of Goods Sold", "expense"),
 ]
 
 DEBIT_NORMAL_TYPES = {"asset", "expense"}
