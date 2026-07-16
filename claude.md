@@ -1,3 +1,16 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## Repository Status
+
+Frontend (`frontend/`, Next.js) and backend (`backend/`, FastAPI) are implemented per the spec below.
+
+* Frontend: `cd frontend && npm run dev` (http://localhost:3000)
+* Backend: `cd backend && uv run uvicorn app.main:app --reload --port 8000`
+
+The Gemini API key in the root `.env` may be named `GEMINI_API_KEY` or `GOOGLE_API_KEY` — the backend accepts either.
+
 # Simple Accounting Journal MVP
 
 ## Business Requirements
@@ -8,12 +21,13 @@ The objective is to demonstrate how an AI Accounting Expert validates journal en
 
 ### Key Features
 
-* A user can enter accounting journal entries.
-* Every journal entry must be validated by an AI Accounting Expert before it is accepted.
+* A user can enter accounting journal entries either by describing the transaction in natural language in a chat window, or by filling in a manual debit/credit form.
+* Every journal entry must be validated by an AI Accounting Expert before it is accepted, regardless of how it was entered.
 * Only approved journal entries are saved.
 * Approved journal entries are posted to the General Ledger.
 * The application automatically updates the Balance Sheet after every approved journal entry.
 * The application automatically updates the Profit & Loss Statement after every approved journal entry.
+* The user can choose which Chart of Accounts accounts this company uses; unused accounts are hidden throughout the app.
 * The user can view:
 
   * Journal Entries
@@ -51,7 +65,7 @@ Financial statements only need to support the predefined Chart of Accounts.
 
 # Predefined Chart of Accounts
 
-The application starts with the following accounts.
+The application starts with the following accounts, all enabled by default.
 
 ## Assets
 
@@ -80,19 +94,25 @@ The application starts with the following accounts.
 * 5100 Rent Expense
 * 5200 Utilities Expense
 
+### Account selection
+
+The user can enable or disable individual accounts from a Settings screen, to reflect which accounts this company actually uses. Disabled accounts disappear from the journal entry form, the chat, the account dropdown, the General Ledger, the Balance Sheet, and the Profit & Loss Statement. Historical postings against a disabled account are preserved in the database and reappear if the account is re-enabled.
+
+Account codes (e.g. `1000`) are internal identifiers used for referential integrity between the ledger and the Chart of Accounts. The UI never displays them — only account names are shown to the user.
+
 ---
 
-# AI Agent
+# AI Agents
 
-The application contains one AI agent called:
+The application contains two AI agents:
 
-**AccountingExpertAgent**
+**AccountingExpertAgent** — validates a journal entry (however it was entered) before it can be accepted.
 
-The Coding Agent must implement this agent.
+**TransactionInterpreterAgent** — turns a natural-language transaction description, typed into the chat window, into a proposed journal entry, asking a clarifying question first if it doesn't have enough information.
 
-The AccountingExpertAgent is responsible only for validating accounting journal entries.
+The Coding Agent must implement both.
 
-The AccountingExpertAgent must **never**:
+Neither agent may ever:
 
 * Write directly to the database.
 * Modify ledger balances.
@@ -100,15 +120,15 @@ The AccountingExpertAgent must **never**:
 * Execute SQL.
 * Make changes to application data.
 
-Its only responsibility is to validate journal entries and return a structured decision.
+Each agent's only responsibility is to return a structured decision. TransactionInterpreterAgent does not perform the IFRS compliance review — every entry it proposes still has to pass AccountingExpertAgent validation before it can be posted.
 
 ---
 
 # AI Agent Implementation
 
-Implement an `AccountingExpertAgent` Python class.
+Implement `AccountingExpertAgent` and `TransactionInterpreterAgent` as Python classes.
 
-The class must use the official Google Gen AI Python SDK.
+Both classes must use the official Google Gen AI Python SDK.
 
 Read the Gemini API key from the project root `.env` file.
 
@@ -118,30 +138,37 @@ Example:
 GEMINI_API_KEY=xxxxxxxxxxxxxxxx
 ```
 
-Use the latest stable Gemini reasoning model available at the time of implementation.
+Use the latest stable Gemini reasoning model available at the time of implementation. Make the model name configurable via a `GEMINI_MODEL` environment variable (with a stable default), since model availability changes over time.
 
-Store the AI system prompt in:
+Store each agent's system prompt in its own file:
 
 ```
 prompts/accounting_expert.md
+prompts/transaction_interpreter.md
 ```
 
-The backend is responsible for creating the AccountingExpertAgent and calling it whenever a journal entry is submitted.
+The backend is responsible for creating both agents and calling them: `AccountingExpertAgent` whenever a journal entry is submitted (from the chat or the manual form), and `TransactionInterpreterAgent` whenever the user sends a chat message.
 
 ---
 
-# Information Sent to the Agent
+# Information Sent to the Agents
 
-For every validation request, the backend must send:
+For every validation request, the backend must send `AccountingExpertAgent`:
 
 * The system prompt.
-* The predefined Chart of Accounts.
+* The Chart of Accounts (enabled accounts only).
 * The journal entry entered by the user.
-* Current General Ledger balances.
+* Current General Ledger balances (enabled accounts only).
 
-The agent must only use the information supplied in the request.
+For every chat message, the backend must send `TransactionInterpreterAgent`:
 
-The agent must never assume information that has not been provided.
+* The system prompt.
+* Today's date.
+* The Chart of Accounts (enabled accounts only).
+* Current General Ledger balances (enabled accounts only).
+* The conversation so far (prior turns plus the latest user message). Conversation history is kept client-side and passed with each request — the backend does not persist chat sessions.
+
+Both agents must only use the information supplied in the request. Neither agent may assume information that has not been provided.
 
 ---
 
@@ -167,9 +194,27 @@ When rejecting an entry, the agent must:
 
 ---
 
+# Responsibilities of the TransactionInterpreterAgent
+
+The TransactionInterpreterAgent acts as a bookkeeping assistant that turns a plain-language transaction description into a proposed double-entry journal entry.
+
+For every chat message it must:
+
+* Decide whether it has enough information to propose a correct double-entry treatment.
+* If not, ask exactly one short, specific clarifying question (for example, whether a purchase was paid in cash or on credit) and propose nothing yet.
+* If so, propose a balanced entry using only accounts from the supplied Chart of Accounts, with a brief explanation of the accounting treatment.
+* Use today's date for the entry unless the user states a different date.
+* Never invent an account that isn't in the supplied Chart of Accounts.
+
+The TransactionInterpreterAgent does not itself verify IFRS compliance in depth — that check happens afterwards, when the user confirms the proposed entry and it is sent through AccountingExpertAgent validation like any other entry.
+
+---
+
 # Agent Response
 
-The AccountingExpertAgent must always return valid JSON.
+Both agents must always return valid JSON.
+
+## AccountingExpertAgent
 
 Example of an approved entry:
 
@@ -204,17 +249,57 @@ Example of a rejected entry:
 }
 ```
 
+## TransactionInterpreterAgent
+
+Example of a clarifying question:
+
+```json
+{
+  "status": "question",
+  "message": "How was the inventory paid for? (e.g., cash, bank, or on credit)",
+  "proposedEntry": null
+}
+```
+
+Example of a proposed entry:
+
+```json
+{
+  "status": "proposal",
+  "message": "This is a cash purchase of inventory. Inventory is debited and Cash is credited.",
+  "proposedEntry": {
+    "date": "2026-07-17",
+    "description": "Cash purchase of inventory",
+    "debit": [
+      {
+        "account": "1300",
+        "amount": 5000
+      }
+    ],
+    "credit": [
+      {
+        "account": "1000",
+        "amount": 5000
+      }
+    ]
+  }
+}
+```
+
 ---
 
 # Application Flow
 
-1. User enters a journal entry.
+1. User enters a journal entry, either:
 
-2. Backend sends:
+   * **Via chat**: the user describes the transaction in natural language. The backend sends the conversation to TransactionInterpreterAgent, which either asks a clarifying question (repeat until it has enough information) or proposes a balanced entry for the user to confirm.
+   * **Via the manual form**: the user directly fills in the date, description, and debit/credit lines.
+
+2. Once a journal entry exists (typed manually, or confirmed from a chat proposal), the backend sends:
 
    * System prompt
-   * Chart of Accounts
-   * Current ledger balances
+   * Chart of Accounts (enabled accounts only)
+   * Current ledger balances (enabled accounts only)
    * Journal entry
 
    to the AccountingExpertAgent.
@@ -247,8 +332,9 @@ Example of a rejected entry:
 * Use `uv` as the Python package manager.
 * Use the official Google Gen AI Python SDK.
 * Gemini API key stored in `.env`.
-* Use the latest stable Gemini reasoning model.
+* Use the latest stable Gemini reasoning model; model name is configurable via `GEMINI_MODEL` since availability shifts over time.
 * Financial statement calculations are performed by the backend, not the AI.
+* Chat conversation history lives client-side only (sent with each request) — no server-side chat session storage, to keep the single-user MVP simple.
 
 ---
 
