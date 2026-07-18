@@ -26,15 +26,16 @@ The repository deploys as a single Vercel project using [Services](https://verce
 * `GEMINI_API_KEY` (or `GOOGLE_API_KEY`) and optionally `GEMINI_MODEL` must also be set as Vercel environment variables — there is no `.env` file in production.
 * The frontend does not need `API_BASE_URL` set manually in production: it self-references the project's stable production domain via Vercel's auto-injected `VERCEL_PROJECT_PRODUCTION_URL`, so `/api/*` calls are routed to the backend service by the rewrite automatically. (`VERCEL_URL` is deliberately not used for this — it points at the unique per-deployment domain, which Vercel's docs note is incompatible with Standard Deployment Protection.)
 
-### Access control
+### Access control and multi-tenancy
 
-Since this MVP has no user authentication, an optional `SITE_PASSWORD` environment variable gates the whole deployment when set (left unset in local dev, where it's a no-op):
+Each registered user has their own completely isolated company: their own Chart of Accounts, onboarding status, journal entries, and financial statements. Users never see each other's data.
 
-* The backend rejects every API request unless it carries a matching `X-Site-Password` header (`app/main.py`'s `require_site_password` dependency).
-* The frontend's server-side API client (`lib/api.ts`) attaches that header automatically to every request, using the server-only `SITE_PASSWORD` env var (never exposed to the browser).
-* A `proxy.ts` gates the UI itself: visitors without a `site_auth` cookie matching `SITE_PASSWORD` are redirected to `/login`, which sets that cookie on a correct password submission.
-
-This is a shared-password gate, not per-user authentication — it exists to keep the deployment private, not to distinguish between users. (Vercel's own Password Protection feature was considered but requires a paid "Advanced Deployment Protection" add-on not available on this account's plan.)
+* Registration is open — anyone can create an account with an email and password at `/register`. There is no invite or approval step.
+* Passwords are hashed with `bcrypt` (`app/auth.py`) and stored in a `users` table; the database is the only place user identity lives (no third-party auth provider).
+* Logging in or registering issues an opaque session token (`secrets.token_urlsafe`, 30-day expiry) stored in a `sessions` table, keyed to the user. The backend's `get_current_user` FastAPI dependency looks up this token on every request via an `Authorization: Bearer <token>` header and is required by every data endpoint.
+* The frontend stores that token in an httpOnly `session_token` cookie (set by the `login`/`register` Server Actions) and attaches it as the `Authorization` header on every server-side call to the backend (`lib/api.ts`). The token is never exposed to client-side JavaScript.
+* `proxy.ts` redirects visitors to `/login` if that cookie is simply absent (a fast, cheap check); real validation of the token against the `sessions` table happens per-request in the backend (and in each page's `requireAuthenticated()`/`requireOnboarded()` call), so an expired or forged cookie value still gets rejected even though it passes the proxy.
+* All per-company tables (`accounts`, `journal_entries`, `journal_lines`, `business_profile`) carry a `user_id` and every query filters by the current user — see Technical Decisions below.
 
 # Simple Accounting Journal MVP
 
@@ -68,11 +69,10 @@ This project is a Minimum Viable Product (MVP).
 
 For this MVP:
 
-* Single user.
-* Single company.
-* Single accounting period.
+* Each user has exactly one company (no switching between multiple companies on one account).
+* Single accounting period per company.
 * Postgres database (a hosted Postgres provider such as Neon in production; a local Postgres container in development).
-* No authentication.
+* Authentication is a simple shared-database email/password + session token scheme (see Access control below) — no email verification, password reset, OAuth/SSO, or roles/permissions within a company.
 * No tax calculations.
 * No depreciation.
 * No accruals.
@@ -121,7 +121,7 @@ The application starts with the following accounts, all enabled by default.
 
 ### Account selection
 
-Which accounts this company uses is decided once, during onboarding (see below), and is locked afterward. The user can still add a brand-new account at any time — from onboarding itself, or later from the Settings screen — but cannot disable, re-enable, or remove an account that was already part of the locked set. Disabled accounts (only possible before locking) disappear from the journal entry form, the chat, the account dropdown, the General Ledger, the Balance Sheet, and the Profit & Loss Statement. Historical postings against a disabled account are preserved in the database and reappear if the account is re-enabled.
+Each user gets their own copy of the predefined Chart of Accounts, seeded automatically when their account is registered. Which of those accounts their company uses is decided once, during onboarding (see below), and is locked afterward. The user can still add a brand-new account at any time — from onboarding itself, or later from the Settings screen — but cannot disable, re-enable, or remove an account that was already part of the locked set. Disabled accounts (only possible before locking) disappear from the journal entry form, the chat, the account dropdown, the General Ledger, the Balance Sheet, and the Profit & Loss Statement. Historical postings against a disabled account are preserved in the database and reappear if the account is re-enabled.
 
 Account codes (e.g. `1000`) are internal identifiers used for referential integrity between the ledger and the Chart of Accounts. The UI never displays them — only account names are shown to the user. A new account added by the user is auto-assigned the next available code in its category's numeric block (1000s assets, 2000s liabilities, 3000s equity, 4000s revenue, 5000s expenses), spaced by 100 to match the predefined accounts above.
 
@@ -129,7 +129,7 @@ Account codes (e.g. `1000`) are internal identifiers used for referential integr
 
 # Onboarding and Business Setup
 
-Before using any other part of the application, the user must complete a one-time setup:
+After registering, and before using any other part of the application, the user must complete a one-time setup for their company:
 
 * Business name.
 * Type of business (free text, e.g. "Sole Proprietorship").
@@ -379,7 +379,9 @@ Example of a proposed entry:
 * Gemini API key stored in `.env` locally, and as a Vercel environment variable in production.
 * Use the latest stable Gemini reasoning model; model name is configurable via `GEMINI_MODEL` since availability shifts over time.
 * Financial statement calculations are performed by the backend, not the AI.
-* Chat conversation history lives client-side only (sent with each request) — no server-side chat session storage, to keep the single-user MVP simple.
+* Chat conversation history lives client-side only (sent with each request) — no server-side chat session storage, to keep the app simple.
+* Multi-tenancy is enforced by a `user_id` column on every per-company table, not by separate databases or schemas per user. `accounts` uses a composite `(user_id, code)` primary key since account codes are only unique within one user's Chart of Accounts, not globally.
+* Auth uses hand-rolled bcrypt password hashing plus opaque Postgres-backed session tokens — no JWT library, no third-party auth provider (Clerk/Auth0/NextAuth) — to keep the whole stack backed by the one Postgres database already in use.
 
 ---
 

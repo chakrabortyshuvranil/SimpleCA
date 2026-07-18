@@ -29,10 +29,6 @@ def create_gemini_client() -> genai.Client:
 
 DATABASE_URL = os.environ.get("DATABASE_URL")
 
-# When set, every API request must include a matching X-Site-Password header.
-# Left unset in local dev so the backend works without extra configuration.
-SITE_PASSWORD = os.environ.get("SITE_PASSWORD")
-
 # Predefined Chart of Accounts (see CLAUDE.md). Fixed for this MVP.
 CHART_OF_ACCOUNTS: list[tuple[str, str, str]] = [
     ("1000", "Cash", "asset"),

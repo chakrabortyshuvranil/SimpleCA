@@ -1,10 +1,13 @@
+import { cookies } from "next/headers";
 import type {
   AccountSetting,
   AccountType,
+  AuthResponse,
   BalanceSheet,
   BusinessProfile,
   ChartAccount,
   ChatTurn,
+  CurrentUser,
   GeneralLedgerAccount,
   InterpreterResponse,
   JournalEntry,
@@ -27,28 +30,108 @@ const API_BASE_URL =
     ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
     : "http://localhost:8000");
 
-// Only ever read server-side (no NEXT_PUBLIC_ prefix), so it's never shipped
-// to the browser bundle. Required by the backend on every request when set.
-function siteAuthHeaders(init?: RequestInit): HeadersInit {
+export const SESSION_COOKIE = "session_token";
+
+async function getSessionToken(): Promise<string | undefined> {
+  const cookieStore = await cookies();
+  return cookieStore.get(SESSION_COOKIE)?.value;
+}
+
+async function authHeaders(init?: RequestInit): Promise<Headers> {
   const headers = new Headers(init?.headers);
-  if (process.env.SITE_PASSWORD) {
-    headers.set("X-Site-Password", process.env.SITE_PASSWORD);
+  const token = await getSessionToken();
+  if (token) {
+    headers.set("Authorization", `Bearer ${token}`);
   }
   return headers;
+}
+
+async function throwForResponse(res: Response, path: string): Promise<never> {
+  let detail: string | undefined;
+  try {
+    const body = await res.json();
+    if (body && typeof body.detail === "string") {
+      detail = body.detail;
+    }
+  } catch {
+    // response body wasn't JSON; fall through to the generic message
+  }
+  throw new Error(detail ?? `Request to ${path} failed with status ${res.status}`);
 }
 
 async function fetchJSON<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${API_BASE_URL}${path}`, {
     ...init,
-    headers: siteAuthHeaders(init),
+    headers: await authHeaders(init),
     cache: "no-store",
   });
 
   if (!res.ok) {
-    throw new Error(`Request to ${path} failed with status ${res.status}`);
+    await throwForResponse(res, path);
   }
 
   return res.json() as Promise<T>;
+}
+
+export async function registerUser(
+  email: string,
+  password: string,
+): Promise<AuthResponse> {
+  const res = await fetch(`${API_BASE_URL}/api/auth/register`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, password }),
+    cache: "no-store",
+  });
+  if (!res.ok) {
+    await throwForResponse(res, "/api/auth/register");
+  }
+  return res.json() as Promise<AuthResponse>;
+}
+
+export async function loginUser(
+  email: string,
+  password: string,
+): Promise<AuthResponse> {
+  const res = await fetch(`${API_BASE_URL}/api/auth/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, password }),
+    cache: "no-store",
+  });
+  if (!res.ok) {
+    await throwForResponse(res, "/api/auth/login");
+  }
+  return res.json() as Promise<AuthResponse>;
+}
+
+export async function logoutUser(): Promise<void> {
+  const token = await getSessionToken();
+  if (!token) return;
+
+  await fetch(`${API_BASE_URL}/api/auth/logout`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+    cache: "no-store",
+  }).catch(() => {
+    // best effort — the cookie is cleared regardless, and session tokens
+    // also expire on their own after 30 days
+  });
+}
+
+export async function getCurrentUser(): Promise<CurrentUser | null> {
+  const token = await getSessionToken();
+  if (!token) return null;
+
+  const res = await fetch(`${API_BASE_URL}/api/auth/me`, {
+    headers: { Authorization: `Bearer ${token}` },
+    cache: "no-store",
+  });
+
+  if (res.status === 401) return null;
+  if (!res.ok) await throwForResponse(res, "/api/auth/me");
+
+  return res.json() as Promise<CurrentUser>;
 }
 
 export function getAccounts(): Promise<ChartAccount[]> {
@@ -98,7 +181,7 @@ export function postChat(
 
 export async function getBusinessProfile(): Promise<BusinessProfile | null> {
   const res = await fetch(`${API_BASE_URL}/api/business-profile`, {
-    headers: siteAuthHeaders(),
+    headers: await authHeaders(),
     cache: "no-store",
   });
 
@@ -106,9 +189,7 @@ export async function getBusinessProfile(): Promise<BusinessProfile | null> {
     return null;
   }
   if (!res.ok) {
-    throw new Error(
-      `Request to /api/business-profile failed with status ${res.status}`,
-    );
+    await throwForResponse(res, "/api/business-profile");
   }
 
   return res.json() as Promise<BusinessProfile>;

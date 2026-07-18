@@ -5,8 +5,12 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import {
   addCustomAccount,
+  loginUser,
+  logoutUser,
   postChat,
   postJournalEntry,
+  registerUser,
+  SESSION_COOKIE,
   submitOnboarding,
 } from "./api";
 import type {
@@ -228,30 +232,76 @@ export async function completeOnboarding(
   redirect("/");
 }
 
-export type LoginState = { status: "idle" } | { status: "error"; message: string };
+export type AuthState = { status: "idle" } | { status: "error"; message: string };
 
-const SITE_AUTH_COOKIE = "site_auth";
+const SESSION_MAX_AGE = 60 * 60 * 24 * 30; // 30 days, matches the backend's session lifetime
 
-export async function login(
-  _prevState: LoginState,
-  formData: FormData,
-): Promise<LoginState> {
-  const password = String(formData.get("password") ?? "");
-  const next = String(formData.get("next") ?? "/");
-  const sitePassword = process.env.SITE_PASSWORD;
-
-  if (!sitePassword || password !== sitePassword) {
-    return { status: "error", message: "Incorrect password." };
-  }
-
+async function setSessionCookie(token: string): Promise<void> {
   const cookieStore = await cookies();
-  cookieStore.set(SITE_AUTH_COOKIE, sitePassword, {
+  cookieStore.set(SESSION_COOKIE, token, {
     httpOnly: true,
     secure: true,
     sameSite: "lax",
     path: "/",
-    maxAge: 60 * 60 * 24 * 30,
+    maxAge: SESSION_MAX_AGE,
   });
+}
 
+export async function register(
+  _prevState: AuthState,
+  formData: FormData,
+): Promise<AuthState> {
+  const email = String(formData.get("email") ?? "").trim();
+  const password = String(formData.get("password") ?? "");
+  const next = String(formData.get("next") ?? "/");
+
+  if (!email || !password) {
+    return { status: "error", message: "Enter an email and password." };
+  }
+
+  let token: string;
+  try {
+    ({ token } = await registerUser(email, password));
+  } catch (error) {
+    return {
+      status: "error",
+      message: error instanceof Error ? error.message : "Could not register.",
+    };
+  }
+
+  await setSessionCookie(token);
   redirect(next || "/");
+}
+
+export async function login(
+  _prevState: AuthState,
+  formData: FormData,
+): Promise<AuthState> {
+  const email = String(formData.get("email") ?? "").trim();
+  const password = String(formData.get("password") ?? "");
+  const next = String(formData.get("next") ?? "/");
+
+  if (!email || !password) {
+    return { status: "error", message: "Enter an email and password." };
+  }
+
+  let token: string;
+  try {
+    ({ token } = await loginUser(email, password));
+  } catch (error) {
+    return {
+      status: "error",
+      message: error instanceof Error ? error.message : "Could not log in.",
+    };
+  }
+
+  await setSessionCookie(token);
+  redirect(next || "/");
+}
+
+export async function logout(): Promise<void> {
+  await logoutUser();
+  const cookieStore = await cookies();
+  cookieStore.delete(SESSION_COOKIE);
+  redirect("/login");
 }

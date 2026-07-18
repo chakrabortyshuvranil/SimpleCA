@@ -107,3 +107,12 @@ export type BusinessProfile = {
 export type OnboardingInput = BusinessProfile & {
   enabledCodes: string[];
 };
+
+export type AuthResponse = {
+  token: string;
+  email: string;
+};
+
+export type CurrentUser = {
+  email: string;
+};

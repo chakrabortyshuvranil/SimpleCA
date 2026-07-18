@@ -1,8 +1,27 @@
 from typing import Literal, Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, EmailStr
 
 AccountType = Literal["asset", "liability", "equity", "revenue", "expense"]
+
+
+class RegisterRequest(BaseModel):
+    email: EmailStr
+    password: str
+
+
+class LoginRequest(BaseModel):
+    email: EmailStr
+    password: str
+
+
+class AuthResponse(BaseModel):
+    token: str
+    email: str
+
+
+class CurrentUserResponse(BaseModel):
+    email: str
 
 
 class ChartAccount(BaseModel):

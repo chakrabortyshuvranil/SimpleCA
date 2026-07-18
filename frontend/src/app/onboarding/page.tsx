@@ -2,10 +2,13 @@ import { redirect } from "next/navigation";
 import ErrorNotice from "@/components/ErrorNotice";
 import OnboardingForm from "@/components/OnboardingForm";
 import { getAccountSettings, getBusinessProfile } from "@/lib/api";
+import { requireAuthenticated } from "@/lib/onboarding";
 
 export default async function OnboardingPage() {
   // Not wrapped in try/catch: redirect() throws a Next.js control-flow
   // exception that a surrounding catch would otherwise swallow.
+  await requireAuthenticated();
+
   const profile = await getBusinessProfile();
   if (profile) {
     redirect("/");

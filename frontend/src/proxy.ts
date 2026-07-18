@@ -1,20 +1,22 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
-const COOKIE_NAME = "site_auth";
+const COOKIE_NAME = "session_token";
 
 export function proxy(request: NextRequest) {
-  const sitePassword = process.env.SITE_PASSWORD;
-  if (!sitePassword) {
+  if (
+    request.nextUrl.pathname.startsWith("/login") ||
+    request.nextUrl.pathname.startsWith("/register")
+  ) {
     return NextResponse.next();
   }
 
-  if (request.nextUrl.pathname.startsWith("/login")) {
-    return NextResponse.next();
-  }
-
+  // Only checks for the cookie's presence — real validation happens
+  // server-side against the sessions table on every page load and API
+  // call, so an expired or revoked token still gets redirected to /login
+  // there even if it slips past this check.
   const cookie = request.cookies.get(COOKIE_NAME);
-  if (cookie?.value === sitePassword) {
+  if (cookie?.value) {
     return NextResponse.next();
   }
 
