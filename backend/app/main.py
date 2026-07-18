@@ -1,9 +1,11 @@
+import secrets
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException
 from pydantic import ValidationError
 
 from . import database, ledger
+from .config import SITE_PASSWORD
 from .database import Connection
 from .agent import AccountingExpertAgent
 from .interpreter_agent import TransactionInterpreterAgent
@@ -27,6 +29,14 @@ agent = AccountingExpertAgent()
 interpreter_agent = TransactionInterpreterAgent()
 
 
+def require_site_password(x_site_password: str | None = Header(default=None)) -> None:
+    """Blocks direct API access when SITE_PASSWORD is configured. Skipped
+    entirely in local dev, where SITE_PASSWORD is left unset.
+    """
+    if SITE_PASSWORD and not (x_site_password and secrets.compare_digest(x_site_password, SITE_PASSWORD)):
+        raise HTTPException(status_code=401, detail="Missing or incorrect site password")
+
+
 def build_agent_context(conn: Connection) -> tuple[list[dict], list[dict]]:
     accounts = ledger.list_accounts_with_balances(conn)
     chart_of_accounts = [{"code": a.code, "name": a.name, "type": a.type} for a in accounts]
@@ -48,7 +58,11 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(title="Accounting Journal MVP", lifespan=lifespan)
+app = FastAPI(
+    title="Accounting Journal MVP",
+    lifespan=lifespan,
+    dependencies=[Depends(require_site_password)],
+)
 
 
 @app.get("/api/accounts", response_model=list[ChartAccount])

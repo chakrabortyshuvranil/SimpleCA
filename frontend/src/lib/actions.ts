@@ -1,5 +1,6 @@
 "use server";
 
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import {
@@ -225,4 +226,32 @@ export async function completeOnboarding(
 
   revalidatePath("/", "layout");
   redirect("/");
+}
+
+export type LoginState = { status: "idle" } | { status: "error"; message: string };
+
+const SITE_AUTH_COOKIE = "site_auth";
+
+export async function login(
+  _prevState: LoginState,
+  formData: FormData,
+): Promise<LoginState> {
+  const password = String(formData.get("password") ?? "");
+  const next = String(formData.get("next") ?? "/");
+  const sitePassword = process.env.SITE_PASSWORD;
+
+  if (!sitePassword || password !== sitePassword) {
+    return { status: "error", message: "Incorrect password." };
+  }
+
+  const cookieStore = await cookies();
+  cookieStore.set(SITE_AUTH_COOKIE, sitePassword, {
+    httpOnly: true,
+    secure: true,
+    sameSite: "lax",
+    path: "/",
+    maxAge: 60 * 60 * 24 * 30,
+  });
+
+  redirect(next || "/");
 }

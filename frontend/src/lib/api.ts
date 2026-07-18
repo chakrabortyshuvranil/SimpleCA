@@ -27,9 +27,20 @@ const API_BASE_URL =
     ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
     : "http://localhost:8000");
 
+// Only ever read server-side (no NEXT_PUBLIC_ prefix), so it's never shipped
+// to the browser bundle. Required by the backend on every request when set.
+function siteAuthHeaders(init?: RequestInit): HeadersInit {
+  const headers = new Headers(init?.headers);
+  if (process.env.SITE_PASSWORD) {
+    headers.set("X-Site-Password", process.env.SITE_PASSWORD);
+  }
+  return headers;
+}
+
 async function fetchJSON<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${API_BASE_URL}${path}`, {
     ...init,
+    headers: siteAuthHeaders(init),
     cache: "no-store",
   });
 
@@ -87,6 +98,7 @@ export function postChat(
 
 export async function getBusinessProfile(): Promise<BusinessProfile | null> {
   const res = await fetch(`${API_BASE_URL}/api/business-profile`, {
+    headers: siteAuthHeaders(),
     cache: "no-store",
   });
 

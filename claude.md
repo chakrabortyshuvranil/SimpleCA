@@ -26,6 +26,16 @@ The repository deploys as a single Vercel project using [Services](https://verce
 * `GEMINI_API_KEY` (or `GOOGLE_API_KEY`) and optionally `GEMINI_MODEL` must also be set as Vercel environment variables — there is no `.env` file in production.
 * The frontend does not need `API_BASE_URL` set manually in production: it self-references the project's stable production domain via Vercel's auto-injected `VERCEL_PROJECT_PRODUCTION_URL`, so `/api/*` calls are routed to the backend service by the rewrite automatically. (`VERCEL_URL` is deliberately not used for this — it points at the unique per-deployment domain, which Vercel's docs note is incompatible with Standard Deployment Protection.)
 
+### Access control
+
+Since this MVP has no user authentication, an optional `SITE_PASSWORD` environment variable gates the whole deployment when set (left unset in local dev, where it's a no-op):
+
+* The backend rejects every API request unless it carries a matching `X-Site-Password` header (`app/main.py`'s `require_site_password` dependency).
+* The frontend's server-side API client (`lib/api.ts`) attaches that header automatically to every request, using the server-only `SITE_PASSWORD` env var (never exposed to the browser).
+* A `proxy.ts` gates the UI itself: visitors without a `site_auth` cookie matching `SITE_PASSWORD` are redirected to `/login`, which sets that cookie on a correct password submission.
+
+This is a shared-password gate, not per-user authentication — it exists to keep the deployment private, not to distinguish between users. (Vercel's own Password Protection feature was considered but requires a paid "Advanced Deployment Protection" add-on not available on this account's plan.)
+
 # Simple Accounting Journal MVP
 
 ## Business Requirements
