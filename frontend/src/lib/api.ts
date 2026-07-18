@@ -215,3 +215,9 @@ export function addCustomAccount(
     body: JSON.stringify({ name, type }),
   });
 }
+
+// A plain full-page navigation target (not fetched), so it must be an
+// absolute URL: relative to the browser, not to this server-side module.
+export function getGoogleLoginUrl(): string {
+  return `${API_BASE_URL}/api/auth/google/login`;
+}

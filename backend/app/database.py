@@ -14,7 +14,7 @@ SCHEMA_STATEMENTS = [
     CREATE TABLE IF NOT EXISTS users (
         id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
         email TEXT UNIQUE NOT NULL,
-        password_hash TEXT NOT NULL,
+        password_hash TEXT,
         created_at TIMESTAMPTZ NOT NULL DEFAULT now()
     )
     """,
@@ -99,9 +99,20 @@ def init_db() -> None:
         conn = Connection(raw_conn)
         for statement in SCHEMA_STATEMENTS:
             conn.execute(statement)
+        # Google-authenticated users have no password; loosen a constraint
+        # left over from before Google sign-in existed. A no-op if the
+        # column is already nullable.
+        conn.execute("ALTER TABLE users ALTER COLUMN password_hash DROP NOT NULL")
         conn.commit()
     finally:
         raw_conn.close()
+
+
+def _seed_default_accounts(conn: Connection, user_id: int) -> None:
+    conn.executemany(
+        "INSERT INTO accounts (user_id, code, name, type) VALUES (?, ?, ?, ?)",
+        [(user_id, code, name, type_) for code, name, type_ in CHART_OF_ACCOUNTS],
+    )
 
 
 def create_user(conn: Connection, email: str, password_hash: str) -> int:
@@ -110,10 +121,27 @@ def create_user(conn: Connection, email: str, password_hash: str) -> int:
         (email, password_hash),
     ).fetchone()
     user_id = row["id"]
-    conn.executemany(
-        "INSERT INTO accounts (user_id, code, name, type) VALUES (?, ?, ?, ?)",
-        [(user_id, code, name, type_) for code, name, type_ in CHART_OF_ACCOUNTS],
-    )
+    _seed_default_accounts(conn, user_id)
+    conn.commit()
+    return user_id
+
+
+def get_or_create_user_by_google(conn: Connection, email: str) -> int:
+    """Finds the user with this Google-verified email, or creates a new
+    account for them (with no password) if none exists yet. If a
+    password-based account already uses this email, Google sign-in logs
+    into that same account rather than creating a duplicate.
+    """
+    existing = get_user_by_email(conn, email)
+    if existing is not None:
+        return existing["id"]
+
+    row = conn.execute(
+        "INSERT INTO users (email, password_hash) VALUES (?, NULL) RETURNING id",
+        (email,),
+    ).fetchone()
+    user_id = row["id"]
+    _seed_default_accounts(conn, user_id)
     conn.commit()
     return user_id
 

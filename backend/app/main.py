@@ -1,11 +1,14 @@
+import secrets
 from contextlib import asynccontextmanager
 
-from fastapi import Depends, FastAPI, Header, HTTPException
+from fastapi import Cookie, Depends, FastAPI, Header, HTTPException
+from fastapi.responses import RedirectResponse
 from pydantic import ValidationError
 
-from . import database, ledger
+from . import database, google_oauth, ledger
 from .agent import AccountingExpertAgent
 from .auth import CurrentUser, get_current_user, hash_password, verify_password
+from .config import FRONTEND_BASE_URL
 from .database import Connection
 from .interpreter_agent import TransactionInterpreterAgent
 from .schemas import (
@@ -71,7 +74,11 @@ def register(request: RegisterRequest) -> AuthResponse:
 def login(request: LoginRequest) -> AuthResponse:
     with database.get_connection() as conn:
         user = database.get_user_by_email(conn, request.email)
-        if user is None or not verify_password(request.password, user["password_hash"]):
+        if (
+            user is None
+            or user["password_hash"] is None  # Google-only account, no password set
+            or not verify_password(request.password, user["password_hash"])
+        ):
             raise HTTPException(status_code=401, detail="Incorrect email or password")
 
         token, _ = database.create_session(conn, user["id"])
@@ -85,6 +92,65 @@ def logout(authorization: str | None = Header(default=None)) -> dict:
         with database.get_connection() as conn:
             database.delete_session(conn, token)
     return {"ok": True}
+
+
+SESSION_COOKIE = "session_token"
+SESSION_COOKIE_MAX_AGE = 60 * 60 * 24 * 30  # 30 days, matches database.SESSION_LIFETIME
+
+
+@app.get("/api/auth/google/login")
+def google_login() -> RedirectResponse:
+    if not google_oauth.is_configured():
+        raise HTTPException(status_code=503, detail="Google sign-in is not configured")
+
+    url, state = google_oauth.build_authorization_url()
+    response = RedirectResponse(url)
+    response.set_cookie(
+        google_oauth.STATE_COOKIE,
+        state,
+        httponly=True,
+        secure=True,
+        samesite="lax",
+        max_age=600,
+    )
+    return response
+
+
+@app.get("/api/auth/google/callback")
+def google_callback(
+    code: str | None = None,
+    state: str | None = None,
+    error: str | None = None,
+    google_oauth_state: str | None = Cookie(default=None),
+) -> RedirectResponse:
+    failed = RedirectResponse(f"{FRONTEND_BASE_URL}/login?error=google_oauth_failed")
+
+    if error or not code or not state or not google_oauth_state:
+        return failed
+    if not secrets.compare_digest(state, google_oauth_state):
+        return failed
+
+    try:
+        email = google_oauth.exchange_code_for_email(code)
+    except Exception:
+        return failed
+
+    with database.get_connection() as conn:
+        user_id = database.get_or_create_user_by_google(conn, email)
+        token, _ = database.create_session(conn, user_id)
+
+    response = RedirectResponse(f"{FRONTEND_BASE_URL}/")
+    response.delete_cookie(google_oauth.STATE_COOKIE)
+    response.set_cookie(
+        SESSION_COOKIE,
+        token,
+        httponly=True,
+        secure=True,
+        samesite="lax",
+        path="/",
+        max_age=SESSION_COOKIE_MAX_AGE,
+    )
+    return response
 
 
 @app.get("/api/auth/me", response_model=CurrentUserResponse)

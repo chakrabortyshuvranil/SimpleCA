@@ -1,4 +1,5 @@
 import RegisterForm from "@/components/RegisterForm";
+import { getGoogleLoginUrl } from "@/lib/api";
 
 export default async function RegisterPage({
   searchParams,
@@ -10,7 +11,7 @@ export default async function RegisterPage({
   return (
     <div className="mx-auto flex max-w-sm flex-col gap-4 py-16">
       <h1 className="text-xl font-semibold">Create an account</h1>
-      <RegisterForm next={next ?? "/"} />
+      <RegisterForm next={next ?? "/"} googleLoginUrl={getGoogleLoginUrl()} />
     </div>
   );
 }

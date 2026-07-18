@@ -29,6 +29,20 @@ def create_gemini_client() -> genai.Client:
 
 DATABASE_URL = os.environ.get("DATABASE_URL")
 
+GOOGLE_OAUTH_CLIENT_ID = os.environ.get("GOOGLE_OAUTH_CLIENT_ID")
+GOOGLE_OAUTH_CLIENT_SECRET = os.environ.get("GOOGLE_OAUTH_CLIENT_SECRET")
+
+# Backend and frontend share one domain in production (Vercel Services), but
+# run on different local ports in dev — see CLAUDE.md's Deployment section
+# for why VERCEL_PROJECT_PRODUCTION_URL (not VERCEL_URL) is the right signal.
+_VERCEL_PROJECT_PRODUCTION_URL = os.environ.get("VERCEL_PROJECT_PRODUCTION_URL")
+if _VERCEL_PROJECT_PRODUCTION_URL:
+    GOOGLE_OAUTH_REDIRECT_URI = f"https://{_VERCEL_PROJECT_PRODUCTION_URL}/api/auth/google/callback"
+    FRONTEND_BASE_URL = f"https://{_VERCEL_PROJECT_PRODUCTION_URL}"
+else:
+    GOOGLE_OAUTH_REDIRECT_URI = "http://localhost:8000/api/auth/google/callback"
+    FRONTEND_BASE_URL = "http://localhost:3000"
+
 # Predefined Chart of Accounts (see CLAUDE.md). Fixed for this MVP.
 CHART_OF_ACCOUNTS: list[tuple[str, str, str]] = [
     ("1000", "Cash", "asset"),

@@ -24,18 +24,28 @@ The repository deploys as a single Vercel project using [Services](https://verce
 
 * Database: provision Postgres via a Marketplace integration (Neon is the direct successor to the discontinued Vercel Postgres) and set `DATABASE_URL` in Vercel Project Settings to the provided (pooled) connection string.
 * `GEMINI_API_KEY` (or `GOOGLE_API_KEY`) and optionally `GEMINI_MODEL` must also be set as Vercel environment variables — there is no `.env` file in production.
+* `GOOGLE_OAUTH_CLIENT_ID` and `GOOGLE_OAUTH_CLIENT_SECRET` must be set for "Continue with Google" to work; the production redirect URI registered in Google Cloud Console must match `https://<production domain>/api/auth/google/callback` exactly.
 * The frontend does not need `API_BASE_URL` set manually in production: it self-references the project's stable production domain via Vercel's auto-injected `VERCEL_PROJECT_PRODUCTION_URL`, so `/api/*` calls are routed to the backend service by the rewrite automatically. (`VERCEL_URL` is deliberately not used for this — it points at the unique per-deployment domain, which Vercel's docs note is incompatible with Standard Deployment Protection.)
 
 ### Access control and multi-tenancy
 
 Each registered user has their own completely isolated company: their own Chart of Accounts, onboarding status, journal entries, and financial statements. Users never see each other's data.
 
-* Registration is open — anyone can create an account with an email and password at `/register`. There is no invite or approval step.
-* Passwords are hashed with `bcrypt` (`app/auth.py`) and stored in a `users` table; the database is the only place user identity lives (no third-party auth provider).
+* Registration is open — anyone can create an account with an email and password at `/register`, or via "Continue with Google" (see below). There is no invite or approval step.
+* Passwords are hashed with `bcrypt` (`app/auth.py`) and stored in a `users` table; the database is the only place user identity lives (no third-party auth provider). `password_hash` is nullable — Google-only accounts have none, and password login is rejected for them.
 * Logging in or registering issues an opaque session token (`secrets.token_urlsafe`, 30-day expiry) stored in a `sessions` table, keyed to the user. The backend's `get_current_user` FastAPI dependency looks up this token on every request via an `Authorization: Bearer <token>` header and is required by every data endpoint.
 * The frontend stores that token in an httpOnly `session_token` cookie (set by the `login`/`register` Server Actions) and attaches it as the `Authorization` header on every server-side call to the backend (`lib/api.ts`). The token is never exposed to client-side JavaScript.
 * `proxy.ts` redirects visitors to `/login` if that cookie is simply absent (a fast, cheap check); real validation of the token against the `sessions` table happens per-request in the backend (and in each page's `requireAuthenticated()`/`requireOnboarded()` call), so an expired or forged cookie value still gets rejected even though it passes the proxy.
 * All per-company tables (`accounts`, `journal_entries`, `journal_lines`, `business_profile`) carry a `user_id` and every query filters by the current user — see Technical Decisions below.
+
+#### Google sign-in
+
+"Continue with Google" (`app/google_oauth.py`) is a standard OAuth 2.0 authorization-code flow, entirely server-side — no client-side Google SDK.
+
+* `GET /api/auth/google/login` redirects the browser to Google, storing a random CSRF `state` value in a short-lived `google_oauth_state` cookie.
+* `GET /api/auth/google/callback` verifies `state`, exchanges the authorization code for tokens, reads the verified email from Google's userinfo endpoint, and finds or creates a user with that email (matching an existing password-based account by email if one exists, rather than creating a duplicate). It then sets the same `session_token` cookie the password flow uses and redirects to the frontend's home page — the rest of the app treats a Google-authenticated session identically to a password-authenticated one.
+* Requires `GOOGLE_OAUTH_CLIENT_ID` and `GOOGLE_OAUTH_CLIENT_SECRET` (from a Google Cloud Console OAuth client) as environment variables; the feature is disabled with a clear error if they're unset. The redirect URI registered in Google Cloud Console must exactly match `{backend URL}/api/auth/google/callback` for both the local dev backend (`http://localhost:8000`) and production (`https://simpleca.vercel.app`, or your own domain).
+* The frontend's login/register pages link straight to `/api/auth/google/login` as a plain `<a>` tag (a full browser navigation, not a `fetch`) — the URL is absolute (`lib/api.ts`'s `getGoogleLoginUrl()`) since the backend runs on a different port than the frontend in local dev.
 
 # Simple Accounting Journal MVP
 
