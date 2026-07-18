@@ -1,10 +1,10 @@
-import sqlite3
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException
 from pydantic import ValidationError
 
 from . import database, ledger
+from .database import Connection
 from .agent import AccountingExpertAgent
 from .interpreter_agent import TransactionInterpreterAgent
 from .schemas import (
@@ -27,14 +27,14 @@ agent = AccountingExpertAgent()
 interpreter_agent = TransactionInterpreterAgent()
 
 
-def build_agent_context(conn: sqlite3.Connection) -> tuple[list[dict], list[dict]]:
+def build_agent_context(conn: Connection) -> tuple[list[dict], list[dict]]:
     accounts = ledger.list_accounts_with_balances(conn)
     chart_of_accounts = [{"code": a.code, "name": a.name, "type": a.type} for a in accounts]
     current_ledger_balances = [{"code": a.code, "balance": a.balance} for a in accounts]
     return chart_of_accounts, current_ledger_balances
 
 
-def account_settings_list(conn: sqlite3.Connection) -> list[AccountSetting]:
+def account_settings_list(conn: Connection) -> list[AccountSetting]:
     rows = database.list_all_accounts(conn)
     return [
         AccountSetting(code=r["code"], name=r["name"], type=r["type"], enabled=bool(r["enabled"]))

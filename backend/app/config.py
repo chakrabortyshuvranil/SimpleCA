@@ -5,7 +5,6 @@ from dotenv import load_dotenv
 from google import genai
 
 ROOT_DIR = Path(__file__).resolve().parents[2]
-BACKEND_DIR = ROOT_DIR / "backend"
 
 load_dotenv(ROOT_DIR / ".env")
 
@@ -23,7 +22,8 @@ def create_gemini_client() -> genai.Client:
         )
     return genai.Client(api_key=GEMINI_API_KEY)
 
-DB_PATH = BACKEND_DIR / "accounting.db"
+
+DATABASE_URL = os.environ.get("DATABASE_URL")
 
 # Predefined Chart of Accounts (see CLAUDE.md). Fixed for this MVP.
 CHART_OF_ACCOUNTS: list[tuple[str, str, str]] = [

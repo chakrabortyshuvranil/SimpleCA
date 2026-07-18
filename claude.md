@@ -11,6 +11,21 @@ Frontend (`frontend/`, Next.js) and backend (`backend/`, FastAPI) are implemente
 
 The Gemini API key in the root `.env` may be named `GEMINI_API_KEY` or `GOOGLE_API_KEY` — the backend accepts either.
 
+The backend requires a `DATABASE_URL` environment variable (a Postgres connection string). For local development, run a disposable Postgres container, e.g.:
+
+```
+docker run -d --name simpleca-pg -e POSTGRES_PASSWORD=devpass -e POSTGRES_DB=simpleca -p 5433:5432 postgres:16-alpine
+export DATABASE_URL="postgresql://postgres:devpass@localhost:5433/simpleca"
+```
+
+### Deployment (Vercel)
+
+The repository deploys as a single Vercel project using [Services](https://vercel.com/docs/services): the root `vercel.json` defines a `frontend` service (`frontend/`) and a `backend` service (`backend/`, entrypoint `app.main:app`), with `/api/*` rewritten to the backend and everything else to the frontend.
+
+* Database: provision Postgres via a Marketplace integration (Neon is the direct successor to the discontinued Vercel Postgres) and set `DATABASE_URL` in Vercel Project Settings to the provided (pooled) connection string.
+* `GEMINI_API_KEY` (or `GOOGLE_API_KEY`) and optionally `GEMINI_MODEL` must also be set as Vercel environment variables — there is no `.env` file in production.
+* The frontend does not need `API_BASE_URL` set manually in production: it self-references the current deployment via Vercel's auto-injected `VERCEL_URL`, so `/api/*` calls are routed to the backend service by the rewrite automatically, in both production and preview deployments.
+
 # Simple Accounting Journal MVP
 
 ## Business Requirements
@@ -46,8 +61,7 @@ For this MVP:
 * Single user.
 * Single company.
 * Single accounting period.
-* Local SQLite database.
-* Runs locally inside Docker.
+* Postgres database (a hosted Postgres provider such as Neon in production; a local Postgres container in development).
 * No authentication.
 * No tax calculations.
 * No depreciation.
@@ -346,11 +360,11 @@ Example of a proposed entry:
 
 * NextJS frontend
 * Python FastAPI backend
-* SQLite database
-* Docker deployment
+* Postgres database, accessed via `psycopg` (v3)
+* Deployed to Vercel as a single project using Services (see Deployment above)
 * Use `uv` as the Python package manager.
 * Use the official Google Gen AI Python SDK.
-* Gemini API key stored in `.env`.
+* Gemini API key stored in `.env` locally, and as a Vercel environment variable in production.
 * Use the latest stable Gemini reasoning model; model name is configurable via `GEMINI_MODEL` since availability shifts over time.
 * Financial statement calculations are performed by the backend, not the AI.
 * Chat conversation history lives client-side only (sent with each request) — no server-side chat session storage, to keep the single-user MVP simple.

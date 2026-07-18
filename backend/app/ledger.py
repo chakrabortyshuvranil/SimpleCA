@@ -1,6 +1,5 @@
-import sqlite3
-
 from .config import DEBIT_NORMAL_TYPES
+from .database import Connection
 from .schemas import (
     BalanceSheet,
     ChartAccount,
@@ -13,7 +12,7 @@ from .schemas import (
 )
 
 
-def compute_balance(conn: sqlite3.Connection, account_code: str, account_type: str) -> float:
+def compute_balance(conn: Connection, account_code: str, account_type: str) -> float:
     row = conn.execute(
         """
         SELECT
@@ -30,9 +29,9 @@ def compute_balance(conn: sqlite3.Connection, account_code: str, account_type: s
     return row["credit_total"] - row["debit_total"]
 
 
-def list_accounts_with_balances(conn: sqlite3.Connection) -> list[ChartAccount]:
+def list_accounts_with_balances(conn: Connection) -> list[ChartAccount]:
     rows = conn.execute(
-        "SELECT code, name, type FROM accounts WHERE enabled = 1 ORDER BY code"
+        "SELECT code, name, type FROM accounts WHERE enabled = TRUE ORDER BY code"
     ).fetchall()
     return [
         ChartAccount(
@@ -45,7 +44,7 @@ def list_accounts_with_balances(conn: sqlite3.Connection) -> list[ChartAccount]:
     ]
 
 
-def list_journal_entries(conn: sqlite3.Connection) -> list[JournalEntry]:
+def list_journal_entries(conn: Connection) -> list[JournalEntry]:
     entries = conn.execute(
         "SELECT id, date, description FROM journal_entries ORDER BY id"
     ).fetchall()
@@ -70,9 +69,9 @@ def list_journal_entries(conn: sqlite3.Connection) -> list[JournalEntry]:
     return result
 
 
-def general_ledger(conn: sqlite3.Connection) -> list[GeneralLedgerAccount]:
+def general_ledger(conn: Connection) -> list[GeneralLedgerAccount]:
     accounts = conn.execute(
-        "SELECT code, name, type FROM accounts WHERE enabled = 1 ORDER BY code"
+        "SELECT code, name, type FROM accounts WHERE enabled = TRUE ORDER BY code"
     ).fetchall()
 
     result = []
@@ -110,7 +109,7 @@ def general_ledger(conn: sqlite3.Connection) -> list[GeneralLedgerAccount]:
     return result
 
 
-def balance_sheet(conn: sqlite3.Connection) -> BalanceSheet:
+def balance_sheet(conn: Connection) -> BalanceSheet:
     accounts = list_accounts_with_balances(conn)
     assets = [a for a in accounts if a.type == "asset"]
     liabilities = [a for a in accounts if a.type == "liability"]
@@ -126,7 +125,7 @@ def balance_sheet(conn: sqlite3.Connection) -> BalanceSheet:
     )
 
 
-def profit_loss(conn: sqlite3.Connection) -> ProfitLoss:
+def profit_loss(conn: Connection) -> ProfitLoss:
     accounts = list_accounts_with_balances(conn)
     revenue = [a for a in accounts if a.type == "revenue"]
     expenses = [a for a in accounts if a.type == "expense"]
@@ -142,12 +141,12 @@ def profit_loss(conn: sqlite3.Connection) -> ProfitLoss:
     )
 
 
-def insert_journal_entry(conn: sqlite3.Connection, entry: JournalEntryInput) -> JournalEntry:
+def insert_journal_entry(conn: Connection, entry: JournalEntryInput) -> JournalEntry:
     cursor = conn.execute(
-        "INSERT INTO journal_entries (date, description) VALUES (?, ?)",
+        "INSERT INTO journal_entries (date, description) VALUES (?, ?) RETURNING id",
         (entry.date, entry.description),
     )
-    entry_id = cursor.lastrowid
+    entry_id = cursor.fetchone()["id"]
 
     for line in entry.debit:
         conn.execute(
