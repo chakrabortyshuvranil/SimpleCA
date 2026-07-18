@@ -14,13 +14,18 @@ import type {
   ValidationResult,
 } from "./types";
 
-// On Vercel, VERCEL_URL is auto-injected with the current deployment's own
-// host (production or preview), so /api/* self-references through the
+// On Vercel, VERCEL_PROJECT_PRODUCTION_URL is auto-injected with the
+// project's stable production domain, so /api/* self-references through the
 // vercel.json rewrite to the backend service with no manual configuration.
+// (VERCEL_URL points at the unique per-deployment domain instead, which is
+// subject to Deployment Protection and unusable for server-to-server fetches
+// — Vercel's own docs call this out explicitly.)
 // API_BASE_URL can still override this (e.g. for a separately hosted backend).
 const API_BASE_URL =
   process.env.API_BASE_URL ??
-  (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:8000");
+  (process.env.VERCEL_PROJECT_PRODUCTION_URL
+    ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
+    : "http://localhost:8000");
 
 async function fetchJSON<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${API_BASE_URL}${path}`, {

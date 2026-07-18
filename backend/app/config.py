@@ -4,15 +4,19 @@ from pathlib import Path
 from dotenv import load_dotenv
 from google import genai
 
-ROOT_DIR = Path(__file__).resolve().parents[2]
+BACKEND_DIR = Path(__file__).resolve().parents[1]
+ROOT_DIR = BACKEND_DIR.parent
 
 load_dotenv(ROOT_DIR / ".env")
 
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
 GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
 
-ACCOUNTING_EXPERT_PROMPT_PATH = ROOT_DIR / "prompts" / "accounting_expert.md"
-TRANSACTION_INTERPRETER_PROMPT_PATH = ROOT_DIR / "prompts" / "transaction_interpreter.md"
+# Prompts live inside backend/ (not the repo root) so they're included when
+# Vercel builds the backend as an isolated service rooted at backend/ — a
+# sibling directory like ../prompts would not be bundled.
+ACCOUNTING_EXPERT_PROMPT_PATH = BACKEND_DIR / "prompts" / "accounting_expert.md"
+TRANSACTION_INTERPRETER_PROMPT_PATH = BACKEND_DIR / "prompts" / "transaction_interpreter.md"
 
 
 def create_gemini_client() -> genai.Client:

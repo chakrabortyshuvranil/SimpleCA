@@ -24,7 +24,7 @@ The repository deploys as a single Vercel project using [Services](https://verce
 
 * Database: provision Postgres via a Marketplace integration (Neon is the direct successor to the discontinued Vercel Postgres) and set `DATABASE_URL` in Vercel Project Settings to the provided (pooled) connection string.
 * `GEMINI_API_KEY` (or `GOOGLE_API_KEY`) and optionally `GEMINI_MODEL` must also be set as Vercel environment variables — there is no `.env` file in production.
-* The frontend does not need `API_BASE_URL` set manually in production: it self-references the current deployment via Vercel's auto-injected `VERCEL_URL`, so `/api/*` calls are routed to the backend service by the rewrite automatically, in both production and preview deployments.
+* The frontend does not need `API_BASE_URL` set manually in production: it self-references the project's stable production domain via Vercel's auto-injected `VERCEL_PROJECT_PRODUCTION_URL`, so `/api/*` calls are routed to the backend service by the rewrite automatically. (`VERCEL_URL` is deliberately not used for this — it points at the unique per-deployment domain, which Vercel's docs note is incompatible with Standard Deployment Protection.)
 
 # Simple Accounting Journal MVP
 
@@ -175,9 +175,11 @@ Use the latest stable Gemini reasoning model available at the time of implementa
 Store each agent's system prompt in its own file:
 
 ```
-prompts/accounting_expert.md
-prompts/transaction_interpreter.md
+backend/prompts/accounting_expert.md
+backend/prompts/transaction_interpreter.md
 ```
+
+Prompts live inside `backend/`, not at the repo root, so they're included when Vercel builds the backend as an isolated service — see Deployment above.
 
 The backend is responsible for creating both agents and calling them: `AccountingExpertAgent` whenever a journal entry is submitted (from the chat or the manual form), and `TransactionInterpreterAgent` whenever the user sends a chat message.
 
