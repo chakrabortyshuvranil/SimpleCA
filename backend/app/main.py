@@ -10,14 +10,16 @@ from .interpreter_agent import TransactionInterpreterAgent
 from .schemas import (
     AccountSetting,
     BalanceSheet,
+    BusinessProfile,
     ChartAccount,
     ChatRequest,
     GeneralLedgerAccount,
     InterpreterResponse,
     JournalEntry,
     JournalEntryInput,
+    NewAccountInput,
+    OnboardingRequest,
     ProfitLoss,
-    UpdateAccountSettings,
     ValidationResult,
 )
 
@@ -30,6 +32,14 @@ def build_agent_context(conn: sqlite3.Connection) -> tuple[list[dict], list[dict
     chart_of_accounts = [{"code": a.code, "name": a.name, "type": a.type} for a in accounts]
     current_ledger_balances = [{"code": a.code, "balance": a.balance} for a in accounts]
     return chart_of_accounts, current_ledger_balances
+
+
+def account_settings_list(conn: sqlite3.Connection) -> list[AccountSetting]:
+    rows = database.list_all_accounts(conn)
+    return [
+        AccountSetting(code=r["code"], name=r["name"], type=r["type"], enabled=bool(r["enabled"]))
+        for r in rows
+    ]
 
 
 @asynccontextmanager
@@ -74,22 +84,52 @@ def get_profit_loss() -> ProfitLoss:
 @app.get("/api/settings/accounts", response_model=list[AccountSetting])
 def get_account_settings() -> list[AccountSetting]:
     with database.get_connection() as conn:
-        rows = database.list_all_accounts(conn)
-        return [
-            AccountSetting(code=r["code"], name=r["name"], type=r["type"], enabled=bool(r["enabled"]))
-            for r in rows
-        ]
+        return account_settings_list(conn)
 
 
-@app.put("/api/settings/accounts", response_model=list[AccountSetting])
-def update_account_settings(settings: UpdateAccountSettings) -> list[AccountSetting]:
+@app.post("/api/accounts/custom", response_model=AccountSetting)
+def add_custom_account(new_account: NewAccountInput) -> AccountSetting:
     with database.get_connection() as conn:
-        database.set_enabled_accounts(conn, set(settings.enabledCodes))
-        rows = database.list_all_accounts(conn)
-        return [
-            AccountSetting(code=r["code"], name=r["name"], type=r["type"], enabled=bool(r["enabled"]))
-            for r in rows
-        ]
+        try:
+            code = database.add_account(conn, new_account.name, new_account.type)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return AccountSetting(code=code, name=new_account.name, type=new_account.type, enabled=True)
+
+
+@app.get("/api/business-profile", response_model=BusinessProfile)
+def get_business_profile() -> BusinessProfile:
+    with database.get_connection() as conn:
+        row = database.get_business_profile(conn)
+        if row is None:
+            raise HTTPException(status_code=404, detail="Business profile has not been set up yet")
+        return BusinessProfile(
+            businessName=row["business_name"],
+            businessType=row["business_type"],
+            businessId=row["business_id"],
+            address=row["address"],
+            fyStart=row["fy_start"],
+            fyEnd=row["fy_end"],
+        )
+
+
+@app.post("/api/onboarding", response_model=BusinessProfile)
+def complete_onboarding(request: OnboardingRequest) -> BusinessProfile:
+    with database.get_connection() as conn:
+        if database.is_setup_complete(conn):
+            raise HTTPException(status_code=409, detail="Setup has already been completed")
+
+        database.complete_onboarding(
+            conn,
+            business_name=request.businessName,
+            business_type=request.businessType,
+            business_id=request.businessId,
+            address=request.address,
+            fy_start=request.fyStart,
+            fy_end=request.fyEnd,
+            enabled_codes=set(request.enabledCodes),
+        )
+        return BusinessProfile(**request.model_dump(exclude={"enabledCodes"}))
 
 
 @app.post("/api/chat", response_model=InterpreterResponse)

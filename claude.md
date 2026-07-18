@@ -21,13 +21,13 @@ The objective is to demonstrate how an AI Accounting Expert validates journal en
 
 ### Key Features
 
+* Before anything else, the user completes a one-time setup: basic business details, and which Chart of Accounts accounts this company uses.
 * A user can enter accounting journal entries either by describing the transaction in natural language in a chat window, or by filling in a manual debit/credit form.
 * Every journal entry must be validated by an AI Accounting Expert before it is accepted, regardless of how it was entered.
 * Only approved journal entries are saved.
 * Approved journal entries are posted to the General Ledger.
 * The application automatically updates the Balance Sheet after every approved journal entry.
 * The application automatically updates the Profit & Loss Statement after every approved journal entry.
-* The user can choose which Chart of Accounts accounts this company uses; unused accounts are hidden throughout the app.
 * The user can view:
 
   * Journal Entries
@@ -97,9 +97,26 @@ The application starts with the following accounts, all enabled by default.
 
 ### Account selection
 
-The user can enable or disable individual accounts from a Settings screen, to reflect which accounts this company actually uses. Disabled accounts disappear from the journal entry form, the chat, the account dropdown, the General Ledger, the Balance Sheet, and the Profit & Loss Statement. Historical postings against a disabled account are preserved in the database and reappear if the account is re-enabled.
+Which accounts this company uses is decided once, during onboarding (see below), and is locked afterward. The user can still add a brand-new account at any time — from onboarding itself, or later from the Settings screen — but cannot disable, re-enable, or remove an account that was already part of the locked set. Disabled accounts (only possible before locking) disappear from the journal entry form, the chat, the account dropdown, the General Ledger, the Balance Sheet, and the Profit & Loss Statement. Historical postings against a disabled account are preserved in the database and reappear if the account is re-enabled.
 
-Account codes (e.g. `1000`) are internal identifiers used for referential integrity between the ledger and the Chart of Accounts. The UI never displays them — only account names are shown to the user.
+Account codes (e.g. `1000`) are internal identifiers used for referential integrity between the ledger and the Chart of Accounts. The UI never displays them — only account names are shown to the user. A new account added by the user is auto-assigned the next available code in its category's numeric block (1000s assets, 2000s liabilities, 3000s equity, 4000s revenue, 5000s expenses), spaced by 100 to match the predefined accounts above.
+
+---
+
+# Onboarding and Business Setup
+
+Before using any other part of the application, the user must complete a one-time setup:
+
+* Business name.
+* Type of business (free text, e.g. "Sole Proprietorship").
+* Business ID / registration number (free text).
+* Address.
+* Financial year (start date and end date).
+* Which Chart of Accounts accounts this company uses, chosen from the predefined list above (all pre-selected by default), with the ability to add a custom account inline if something needed isn't in the list.
+
+All other pages (Journal Entries, General Ledger, Balance Sheet, Profit & Loss, Settings) redirect to this setup screen until it has been completed. Once completed, the business profile cannot be re-submitted, and the Chart of Accounts selection is locked as described above — the backend rejects attempts to change it.
+
+This setup information is stored for reference and display; per the Limitations above, the application does not use the financial year to filter, close, or restrict transactions (single accounting period).
 
 ---
 

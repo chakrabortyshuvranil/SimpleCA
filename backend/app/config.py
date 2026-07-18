@@ -43,3 +43,14 @@ CHART_OF_ACCOUNTS: list[tuple[str, str, str]] = [
 ]
 
 DEBIT_NORMAL_TYPES = {"asset", "expense"}
+
+# Numeric code ranges each account type is assigned from, matching the
+# spacing (increments of 100) used by CHART_OF_ACCOUNTS above. Used to
+# auto-assign a code when the user adds a custom account.
+ACCOUNT_TYPE_CODE_BLOCKS: dict[str, tuple[int, int]] = {
+    "asset": (1000, 1999),
+    "liability": (2000, 2999),
+    "equity": (3000, 3999),
+    "revenue": (4000, 4999),
+    "expense": (5000, 5999),
+}

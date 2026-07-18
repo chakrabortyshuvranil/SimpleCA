@@ -1,8 +1,11 @@
 import AccountSettingsForm from "@/components/AccountSettingsForm";
 import ErrorNotice from "@/components/ErrorNotice";
 import { getAccountSettings } from "@/lib/api";
+import { requireOnboarded } from "@/lib/onboarding";
 
 export default async function SettingsPage() {
+  await requireOnboarded();
+
   let accounts;
 
   try {

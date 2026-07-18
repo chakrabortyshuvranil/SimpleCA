@@ -19,7 +19,21 @@ class AccountSetting(BaseModel):
     enabled: bool
 
 
-class UpdateAccountSettings(BaseModel):
+class NewAccountInput(BaseModel):
+    name: str
+    type: AccountType
+
+
+class BusinessProfile(BaseModel):
+    businessName: str
+    businessType: str
+    businessId: str
+    address: str
+    fyStart: str
+    fyEnd: str
+
+
+class OnboardingRequest(BusinessProfile):
     enabledCodes: list[str]
 
 

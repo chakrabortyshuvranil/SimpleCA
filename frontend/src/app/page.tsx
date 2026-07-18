@@ -3,8 +3,11 @@ import ErrorNotice from "@/components/ErrorNotice";
 import JournalEntryForm from "@/components/JournalEntryForm";
 import { getAccounts, getJournalEntries } from "@/lib/api";
 import { formatCurrency } from "@/lib/format";
+import { requireOnboarded } from "@/lib/onboarding";
 
 export default async function JournalEntriesPage() {
+  await requireOnboarded();
+
   let accounts, entries;
 
   try {

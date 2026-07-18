@@ -1,10 +1,10 @@
 "use client";
 
-import { useActionState } from "react";
-import { saveAccountSettings, type SettingsState } from "@/lib/actions";
+import { useActionState, useState } from "react";
+import { addAccount, type AddAccountState } from "@/lib/actions";
 import type { AccountSetting, AccountType } from "@/lib/types";
 
-const initialState: SettingsState = { status: "idle" };
+const initialState: AddAccountState = { status: "idle" };
 
 const sectionOrder: AccountType[] = [
   "asset",
@@ -28,61 +28,83 @@ export default function AccountSettingsForm({
   accounts: AccountSetting[];
 }) {
   const [state, formAction, pending] = useActionState(
-    saveAccountSettings,
+    addAccount,
     initialState,
   );
+  const [type, setType] = useState<AccountType>("asset");
 
   return (
-    <form action={formAction} className="flex flex-col gap-6">
+    <div className="flex flex-col gap-6">
       <p className="text-sm text-zinc-500">
-        Choose which accounts this company uses. Accounts you turn off
-        disappear from the journal entry form, chat, General Ledger, Balance
-        Sheet, and Profit &amp; Loss Statement.
+        This is the Chart of Accounts your business uses, set during setup.
+        These accounts are locked and can&rsquo;t be removed or disabled, but
+        you can add a new account below if you need one that isn&rsquo;t
+        listed.
       </p>
 
-      {sectionOrder.map((type) => {
-        const sectionAccounts = accounts.filter((a) => a.type === type);
+      {sectionOrder.map((accType) => {
+        const sectionAccounts = accounts.filter(
+          (a) => a.type === accType && a.enabled,
+        );
         if (sectionAccounts.length === 0) return null;
 
         return (
-          <div key={type}>
-            <h2 className="mb-2 font-medium">{sectionTitles[type]}</h2>
-            <div className="flex flex-col gap-1">
+          <div key={accType}>
+            <h2 className="mb-2 font-medium">{sectionTitles[accType]}</h2>
+            <ul className="flex flex-col gap-1 text-sm text-zinc-700 dark:text-zinc-300">
               {sectionAccounts.map((account) => (
-                <label
-                  key={account.code}
-                  className="flex items-center gap-2 text-sm"
-                >
-                  <input
-                    type="checkbox"
-                    name="enabledCodes"
-                    value={account.code}
-                    defaultChecked={account.enabled}
-                  />
-                  {account.name}
-                </label>
+                <li key={account.code}>{account.name}</li>
               ))}
-            </div>
+            </ul>
           </div>
         );
       })}
 
-      <button
-        type="submit"
-        disabled={pending}
-        className="self-start rounded bg-foreground px-4 py-2 text-sm font-medium text-background disabled:opacity-50"
+      <form
+        action={formAction}
+        className="flex flex-col gap-3 rounded border border-black/10 p-4 dark:border-white/15"
       >
-        {pending ? "Saving…" : "Save"}
-      </button>
+        <p className="text-sm font-medium">Add a new account</p>
+        <div className="flex gap-2">
+          <input
+            type="text"
+            name="name"
+            placeholder="Account name"
+            required
+            className="flex-1 rounded border border-black/10 bg-transparent px-2 py-1.5 text-sm dark:border-white/15"
+          />
+          <select
+            name="type"
+            value={type}
+            onChange={(e) => setType(e.target.value as AccountType)}
+            className="rounded border border-black/10 bg-transparent px-2 py-1.5 text-sm dark:border-white/15"
+          >
+            {sectionOrder.map((accType) => (
+              <option key={accType} value={accType}>
+                {sectionTitles[accType]}
+              </option>
+            ))}
+          </select>
+          <button
+            type="submit"
+            disabled={pending}
+            className="rounded bg-foreground px-4 py-1.5 text-sm font-medium text-background disabled:opacity-50"
+          >
+            {pending ? "Adding…" : "Add"}
+          </button>
+        </div>
 
-      {state.status === "error" && (
-        <p className="text-sm text-red-600 dark:text-red-400">
-          {state.message}
-        </p>
-      )}
-      {state.status === "saved" && (
-        <p className="text-sm text-green-700 dark:text-green-400">Saved.</p>
-      )}
-    </form>
+        {state.status === "error" && (
+          <p className="text-sm text-red-600 dark:text-red-400">
+            {state.message}
+          </p>
+        )}
+        {state.status === "added" && (
+          <p className="text-sm text-green-700 dark:text-green-400">
+            Added {state.name}.
+          </p>
+        )}
+      </form>
+    </div>
   );
 }

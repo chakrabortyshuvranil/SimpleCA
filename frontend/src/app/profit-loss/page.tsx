@@ -1,6 +1,7 @@
 import ErrorNotice from "@/components/ErrorNotice";
 import { getProfitLoss } from "@/lib/api";
 import { formatCurrency } from "@/lib/format";
+import { requireOnboarded } from "@/lib/onboarding";
 import type { ChartAccount } from "@/lib/types";
 
 function AccountSection({
@@ -39,6 +40,8 @@ function AccountSection({
 }
 
 export default async function ProfitLossPage() {
+  await requireOnboarded();
+
   let statement;
 
   try {

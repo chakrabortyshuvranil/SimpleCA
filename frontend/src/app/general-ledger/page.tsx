@@ -1,8 +1,11 @@
 import ErrorNotice from "@/components/ErrorNotice";
 import { getGeneralLedger } from "@/lib/api";
 import { formatCurrency } from "@/lib/format";
+import { requireOnboarded } from "@/lib/onboarding";
 
 export default async function GeneralLedgerPage() {
+  await requireOnboarded();
+
   let accounts;
 
   try {
