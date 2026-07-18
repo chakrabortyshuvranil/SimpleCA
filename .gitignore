@@ -188,3 +188,5 @@ memory.db
 
 # SQLite database for the Accounting Journal MVP backend
 backend/accounting.db
+.vercel
+.env*
